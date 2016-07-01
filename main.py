@@ -1,21 +1,41 @@
 import scrapy
-import sys
+import urlparse
 
-teams = []
-players = []
+class Player(scrapy.Item):
+    name = scrapy.Field()
+    link = scrapy.Field()
+    team = scrapy.Field()
+    position = scrapy.Field()
 
-class BlogSpider(scrapy.Spider):
-    name = 'blogspider'
-    start_urls = ['http://www.scoutscartola.com/clube']
+class ScoutsCartola(scrapy.Spider):
+    name = 'scouts-cartola'
+
+    def __init__(self, tag=None):
+        teams_url = 'http://www.scoutscartola.com'
+
+        self.start_urls = [teams_url + '/jogador']
 
     def parse(self, response):
-        for team_link in response.xpath("//div[@class='bloco']/a")  :
-            # for team_name in team_link.xpath('./text()').extract():
-            #     teams.append(team_name)
-            for link in team_link.xpath('./@href').extract():
-                yield scrapy.Request(response.urljoin(link), self.get_players)
+        build_full_url = lambda link: urlparse.urljoin(response.url, link)
 
-    def get_players(self, response):
-        for player in response.xpath("//p[@class='atleta']/a[@class='atletalink']/text()").extract():
-            print(player)
-            sys.stdin.read(1)
+        for player in response.css("#boxAlfabetica > a"):
+            it = Player()
+
+            it['name'] = player.xpath('text()')[0].extract()
+            it['link'] = build_full_url(player.xpath('@href')[0].extract())
+
+            return [scrapy.Request(it['link'], callback=self.parse_player, meta={'player': it})]
+
+
+    def parse_player(self, response):
+        player = response.meta['player']
+
+        links = []
+
+        for mainData in response.css("#bloco2 > div > a"):
+            links.append(mainData.xpath('text()')[0].extract())
+
+        player['team'] = links[0]
+        player['position'] = links[2]
+
+        yield player
